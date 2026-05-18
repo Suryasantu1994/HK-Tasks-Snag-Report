@@ -435,14 +435,6 @@ tr:hover td{background:#fafbfc;}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Frequency</label>
-          <select class="form-select" id="hk-frequency">
-            <option value="">— Select —</option>
-            <option>Daily</option><option>Weekly</option><option>Fortnightly</option>
-            <option>Monthly</option><option>One-time</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label class="form-label">Date *</label>
           <input class="form-input" id="hk-date" type="date"/>
         </div>
@@ -782,7 +774,7 @@ function renderDashboard(){
   }
   ul.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
     <thead><tr>
-      <th style="background:var(--teal-pale);color:var(--teal);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;padding:10px 14px;text-align:left;white-space:nowrap">ID</th>
+      <th style="background:var(--teal-pale);color:var(--teal);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;padding:10px 14px;text-align:left;white-space:nowrap">S.No</th>
       <th style="background:var(--teal-pale);color:var(--teal);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;padding:10px 14px;text-align:left;white-space:nowrap">Dept</th>
       <th style="background:var(--teal-pale);color:var(--teal);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;padding:10px 14px;text-align:left;white-space:nowrap">Building</th>
       <th style="background:var(--teal-pale);color:var(--teal);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;padding:10px 14px;text-align:left;white-space:nowrap">Category</th>
@@ -793,7 +785,7 @@ function renderDashboard(){
     </tr></thead>
     <tbody>` +
     urgent.map((s,i)=>`<tr onclick="viewSnag('${s.id}')" style="cursor:pointer;background:${i%2===0?'#fff':'#fafbfc'}">
-      <td style="padding:11px 14px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${s.id}</td>
+      <td style="padding:11px 14px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${i+1}</td>
       <td style="padding:11px 14px;border-bottom:1px solid var(--border)"><span class="badge ${s.dept}">${s.dept}</span></td>
       <td style="padding:11px 14px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap">${s.building}</td>
       <td style="padding:11px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);white-space:nowrap">${s.category||'—'}</td>
@@ -876,11 +868,11 @@ function renderList(){
   if(!filtered.length){ wrap.innerHTML='<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">No snags match the filters</div></div>'; return; }
 
   wrap.innerHTML = `<table><thead><tr>
-    <th>ID</th><th>Date</th><th>Dept</th><th>Building</th><th>Location</th><th>Category</th>
+    <th>S.No</th><th>Date</th><th>Dept</th><th>Building</th><th>Location</th><th>Category</th>
     <th>Description</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Actions</th>
   </tr></thead><tbody>` +
-  filtered.map(s=>`<tr>
-    <td class="snag-id">${s.id}</td>
+  filtered.map((s,i)=>`<tr>
+    <td class="snag-id">${i+1}</td>
     <td style="white-space:nowrap">${fmtDate(s.date)}</td>
     <td><span class="badge ${s.dept}">${s.dept}</span></td>
     <td>${s.building}</td>
@@ -1224,10 +1216,10 @@ function renderHKList(){
   }
 
   wrap.innerHTML = `<table><thead><tr>
-    <th>ID</th><th>Date</th><th>Building</th><th>Frequency</th>
+    <th>S.No</th><th>Date</th><th>Building</th>
     <th>Description</th><th>Assigned</th><th>Targeted</th><th>Done So Far</th><th>Status</th><th>Actions</th>
   </tr></thead><tbody>` +
-  filtered.map(t=>{
+  filtered.map((t,i)=>{
     const tgt = t.targeted||0;
     const done = t.doneSoFar||0;
     const pct = tgt>0 ? Math.min(100,Math.round(done/tgt*100)) : null;
@@ -1238,10 +1230,9 @@ function renderHKList(){
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:2px">${pct}%</div>` : '<span style="color:var(--muted);font-size:12px">—</span>';
     return `<tr>
-      <td class="snag-id">${t.id}</td>
+      <td class="snag-id" style="text-align:center">${i+1}</td>
       <td style="white-space:nowrap">${fmtDate(t.date)}</td>
       <td>${t.building}</td>
-      <td style="font-size:12px;color:var(--muted)">${t.frequency||'—'}</td>
       <td style="max-width:200px">${t.description.substring(0,70)}${t.description.length>70?'…':''}</td>
       <td>${t.assigned||'—'}</td>
       <td style="text-align:center;font-size:13px">${tgt||'—'}</td>
