@@ -8,6 +8,51 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, remove, onValue, update }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyD_ktxIqu6oxm9hXlSk1p-jds8W3fLItSU",
+    authDomain: "snag-report-and-hk-tasks.firebaseapp.com",
+    databaseURL: "https://snag-report-and-hk-tasks-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "snag-report-and-hk-tasks",
+    storageBucket: "snag-report-and-hk-tasks.firebasestorage.app",
+    messagingSenderId: "260476768991",
+    appId: "1:260476768991:web:7046ee0617f300cd78cf6a"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  window._db = db;
+  window._fb = { ref, set, remove, update };
+
+  // Real-time listener for snags
+  onValue(ref(db, 'snags'), snap => {
+    const data = snap.val();
+    window.snags = data
+      ? Object.values(data).sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''))
+      : [];
+    if(window._appReady){
+      renderDashboard();
+      if(document.getElementById('tab-list') && !document.getElementById('tab-list').classList.contains('hidden')) renderList();
+    }
+  });
+
+  // Real-time listener for hkTasks
+  onValue(ref(db, 'hkTasks'), snap => {
+    const data = snap.val();
+    window.hkTasks = data ? Object.values(data) : [];
+    if(window._appReady){
+      if(document.getElementById('tab-hktasks') && !document.getElementById('tab-hktasks').classList.contains('hidden')){
+        renderHKList();
+        renderHKCharts(window.hkTasks);
+      }
+    }
+  });
+</script>
 <style>
 :root {
   --teal: #005F5C;
@@ -190,6 +235,8 @@ tr:hover td{background:#fafbfc;}
   </div>
   <div class="header-actions">
     <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇ CSV</button>
+    <button class="btn btn-outline btn-sm" onclick="document.getElementById('importJSONInput').click()" style="border-color:#14b8a6;color:#14b8a6;" title="Import data from v17 JSON export">⬆ Import v17</button>
+    <input type="file" id="importJSONInput" accept=".json" style="display:none" onchange="importFromV17(event)">
     <button class="btn btn-gold btn-sm" onclick="openWhatsApp()">📲 WhatsApp</button>
   </div>
 </div>
@@ -557,14 +604,36 @@ const DEPT_CATEGORIES = {
   RM: ['Electrical','Plumbing','Civil/Structural','Carpentry','HVAC/AC','Painting','IT/Network','Lift/Elevator','Fire Safety','Other R&M']
 };
 
-let snags = JSON.parse(localStorage.getItem('gitam_snags') || '[]');
-let photoFiles = []; // base64 strings for current form
+window.snags = window.snags || [];
+let photoFiles = [];
 let editingId = null;
 let charts = {};
 
+// Compress image to reduce Firebase payload
+function compressImage(dataUrl, maxW=800, quality=0.7){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const scale = Math.min(1, maxW / img.width);
+      const c = document.createElement('canvas');
+      c.width = img.width * scale; c.height = img.height * scale;
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
 // ======== UTILS ========
 function uid(){ return 'SN-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substr(2,4).toUpperCase(); }
-function save(){ localStorage.setItem('gitam_snags', JSON.stringify(snags)); }
+function saveSnag(snag){
+  const { ref, set } = window._fb;
+  set(ref(window._db, 'snags/' + snag.id), snag);
+}
+function deleteSnagFB(id){
+  const { ref, remove } = window._fb;
+  remove(ref(window._db, 'snags/' + id));
+}
 function toast(msg, err=false){
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show' + (err?' error':'');
@@ -582,7 +651,7 @@ function switchTab(name){
   });
   if(name==='dashboard') renderDashboard();
   if(name==='list') renderList();
-  if(name==='hktasks') { renderHKList(); renderHKCharts(hkTasks); }
+  if(name==='hktasks') { renderHKList(); renderHKCharts(window.hkTasks); }
 }
 
 // ======== FORM ========
@@ -598,8 +667,9 @@ function handlePhotos(e){
   const files = Array.from(e.target.files);
   files.forEach(file=>{
     const reader = new FileReader();
-    reader.onload = ev => {
-      photoFiles.push(ev.target.result);
+    reader.onload = async ev => {
+      const compressed = await compressImage(ev.target.result);
+      photoFiles.push(compressed);
       renderPhotoPreviews();
     };
     reader.readAsDataURL(file);
@@ -644,18 +714,18 @@ function submitSnag(){
     description: desc,
     reporter: document.getElementById('f-reporter').value.trim(),
     date: document.getElementById('f-date').value || todayStr(),
-    status: editingId ? (snags.find(s=>s.id===editingId)||{}).status||'Open' : 'Open',
+    status: editingId ? (window.snags.find(s=>s.id===editingId)||{}).status||'Open' : 'Open',
     photos: [...photoFiles],
-    createdAt: editingId ? (snags.find(s=>s.id===editingId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
+    createdAt: editingId ? (window.snags.find(s=>s.id===editingId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   if(editingId){
-    const idx = snags.findIndex(s=>s.id===editingId);
-    if(idx>-1) snags[idx] = snag;
+    const idx = window.snags.findIndex(s=>s.id===editingId);
+    if(idx>-1) window.snags[idx] = snag;
   } else {
-    snags.unshift(snag);
+    window.snags.unshift(snag);
   }
-  save();
+  saveSnag(snag);
   toast(editingId ? 'Snag updated!' : 'Snag logged!');
   resetForm();
 }
@@ -664,7 +734,7 @@ function submitSnag(){
 function renderDashboard(){
   const fromVal = document.getElementById('dash-from')?.value || '';
   const toVal = document.getElementById('dash-to')?.value || '';
-  const ds = snags.filter(s => {
+  const ds = window.snags.filter(s => {
     if(fromVal && s.date < fromVal) return false;
     if(toVal && s.date > toVal) return false;
     return true;
@@ -790,7 +860,7 @@ function renderList(){
   const fromVal = document.getElementById('fl-from')?.value || '';
   const toVal = document.getElementById('fl-to')?.value || '';
 
-  let filtered = snags.filter(s => {
+  let filtered = window.snags.filter(s => {
     if(dept && s.dept !== dept) return false;
     if(building && s.building !== building) return false;
     if(status && s.status !== status) return false;
@@ -830,7 +900,7 @@ function renderList(){
 
 // ======== DETAIL MODAL ========
 function viewSnag(id){
-  const s = snags.find(x=>x.id===id);
+  const s = window.snags.find(x=>x.id===id);
   if(!s) return;
   document.getElementById('modal-title').textContent = s.id;
   document.getElementById('modal-body').innerHTML = `
@@ -864,13 +934,16 @@ function viewSnag(id){
 function dr(label, val){ return `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-val">${val}</span></div>`; }
 
 function changeStatus(id, status){
-  const s = snags.find(x=>x.id===id);
+  const s = window.snags.find(x=>x.id===id);
   if(!s) return;
   s.status = status;
   s.updatedAt = new Date().toISOString();
   if(status === 'Closed') s.closedAt = new Date().toISOString();
   else if(status !== 'Closed') delete s.closedAt;
-  save();
+  const { ref, update } = window._fb;
+  const patch = { status: s.status, updatedAt: s.updatedAt };
+  if(s.closedAt) patch.closedAt = s.closedAt; else patch.closedAt = null;
+  update(ref(window._db, 'snags/' + id), patch);
   toast('Status updated to ' + status);
   viewSnag(id);
   if(document.getElementById('tab-list') && !document.getElementById('tab-list').classList.contains('hidden')) renderList();
@@ -881,7 +954,7 @@ function closeModal(e){ if(e.target.id==='detail-modal') closeDetailModal(); }
 
 // ======== EDIT ========
 function editSnag(id){
-  const s = snags.find(x=>x.id===id);
+  const s = window.snags.find(x=>x.id===id);
   if(!s) return;
   switchTab('log');
   editingId = id;
@@ -902,8 +975,8 @@ function editSnag(id){
 // ======== DELETE ========
 function deleteSnag(id){
   if(!confirm('Delete this snag? This cannot be undone.')) return;
-  snags = snags.filter(s=>s.id!==id);
-  save();
+  deleteSnagFB(id);
+  window.snags = window.snags.filter(s=>s.id!==id);
   toast('Snag deleted');
   renderList();
 }
@@ -917,9 +990,9 @@ function closeLightbox(){ document.getElementById('lightbox').classList.add('hid
 
 // ======== CSV EXPORT ========
 function exportCSV(){
-  if(!snags.length){ toast('No snags to export', true); return; }
+  if(!window.snags.length){ toast('No snags to export', true); return; }
   const headers = ['ID','Date','Dept','Building','Location','Category','Priority','Status','Assigned','Reporter','Description'];
-  const rows = snags.map(s=>[s.id,s.date,s.dept,s.building,s.location,s.category,s.priority,s.status,s.assigned,s.reporter,`"${s.description.replace(/"/g,'""')}"`]);
+  const rows = window.snags.map(s=>[s.id,s.date,s.dept,s.building,s.location,s.category,s.priority,s.status,s.assigned,s.reporter,`"${s.description.replace(/"/g,'""')}"`]);
   const csv = [headers, ...rows].map(r=>r.join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
@@ -928,13 +1001,53 @@ function exportCSV(){
   toast('CSV downloaded!');
 }
 
+// ======== JSON IMPORT (from v17) ========
+function importFromV17(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    try {
+      const payload = JSON.parse(e.target.result);
+      if(!payload.snags && !payload.hkTasks){
+        toast('Invalid file format', true); return;
+      }
+      const db = window._db;
+      const { ref, set } = window._fb;
+      let count = 0;
+
+      // Import snags
+      if(payload.snags && payload.snags.length){
+        for(const snag of payload.snags){
+          await set(ref(db, 'snags/' + snag.id), snag);
+          count++;
+        }
+      }
+
+      // Import hkTasks
+      if(payload.hkTasks && payload.hkTasks.length){
+        for(const task of payload.hkTasks){
+          await set(ref(db, 'hkTasks/' + task.id), task);
+          count++;
+        }
+      }
+
+      toast(`✅ Imported ${count} records from v17!`);
+      event.target.value = '';
+    } catch(err){
+      toast('Import failed: ' + err.message, true);
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ======== WHATSAPP SNAPSHOT ========
 function statBox(val, label){
   return `<div style="font-size:22px;font-weight:700;line-height:1">${val}</div><div style="font-size:10px;opacity:0.8;margin-top:2px">${label}</div>`;
 }
 
 function openWhatsApp(){
-  const ds = snags; // use all snags (no date filter for snapshot)
+  const ds = window.snags; // use all snags (no date filter for snapshot)
   const open = ds.filter(s=>s.status==='Open').length;
   const inprog = ds.filter(s=>s.status==='In Progress').length;
   const closed = ds.filter(s=>s.status==='Closed').length;
@@ -1002,11 +1115,18 @@ function downloadWASnapshot(){
 }
 
 // ======== HK TASKS ========
-let hkTasks = JSON.parse(localStorage.getItem('gitam_hktasks') || '[]');
+window.hkTasks = window.hkTasks || [];
 let hkEditingId = null;
 
 function hkUid(){ return 'HK-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substr(2,4).toUpperCase(); }
-function saveHK(){ localStorage.setItem('gitam_hktasks', JSON.stringify(hkTasks)); }
+function saveHKTask(task){
+  const { ref, set } = window._fb;
+  set(ref(window._db, 'hkTasks/' + task.id), task);
+}
+function deleteHKTaskFB(id){
+  const { ref, remove } = window._fb;
+  remove(ref(window._db, 'hkTasks/' + id));
+}
 
 function resetHKForm(){
   ['hk-building','hk-assigned','hk-desc','hk-frequency','hk-targeted','hk-done'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -1030,23 +1150,23 @@ function submitHKTask(){
     targeted: parseInt(document.getElementById('hk-targeted').value)||0,
     doneSoFar: parseInt(document.getElementById('hk-done').value)||0,
     date: document.getElementById('hk-date').value || todayStr(),
-    createdAt: hkEditingId ? (hkTasks.find(t=>t.id===hkEditingId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
+    createdAt: hkEditingId ? (window.hkTasks.find(t=>t.id===hkEditingId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   if(hkEditingId){
-    const idx = hkTasks.findIndex(t=>t.id===hkEditingId);
-    if(idx>-1) hkTasks[idx]=task;
+    const idx = window.hkTasks.findIndex(t=>t.id===hkEditingId);
+    if(idx>-1) window.hkTasks[idx]=task;
   } else {
-    hkTasks.unshift(task);
+    window.hkTasks.unshift(task);
   }
-  saveHK();
+  saveHKTask(task);
   toast(hkEditingId ? 'Task updated!' : 'Task saved!');
   resetHKForm();
   renderHKList();
 }
 
 function editHKTask(id){
-  const t = hkTasks.find(x=>x.id===id);
+  const t = window.hkTasks.find(x=>x.id===id);
   if(!t) return;
   hkEditingId = id;
   document.getElementById('hk-building').value = t.building;
@@ -1063,20 +1183,21 @@ function editHKTask(id){
 
 function deleteHKTask(id){
   if(!confirm('Delete this task? This cannot be undone.')) return;
-  hkTasks = hkTasks.filter(t=>t.id!==id);
-  saveHK();
+  deleteHKTaskFB(id);
+  window.hkTasks = window.hkTasks.filter(t=>t.id!==id);
   toast('Task deleted');
   renderHKList();
 }
 
 function toggleHKStatus(id){
-  const t = hkTasks.find(x=>x.id===id);
+  const t = window.hkTasks.find(x=>x.id===id);
   if(!t) return;
   const cycle = ['Pending','In Progress','Done'];
   const next = cycle[(cycle.indexOf(t.status)+1) % cycle.length];
   t.status = next;
   t.updatedAt = new Date().toISOString();
-  saveHK();
+  const { ref, update } = window._fb;
+  update(ref(window._db, 'hkTasks/' + id), { status: next, updatedAt: t.updatedAt });
   renderHKList();
 }
 
@@ -1086,7 +1207,7 @@ function renderHKList(){
   const status = document.getElementById('hkfl-status').value;
   const frequency = document.getElementById('hkfl-frequency').value;
 
-  let filtered = hkTasks.filter(t=>{
+  let filtered = window.hkTasks.filter(t=>{
     if(building && t.building!==building) return false;
     if(status && t.status!==status) return false;
     if(frequency && t.frequency!==frequency) return false;
@@ -1094,7 +1215,7 @@ function renderHKList(){
     return true;
   });
 
-  renderHKCharts(filtered.length ? filtered : hkTasks);
+  renderHKCharts(filtered.length ? filtered : window.hkTasks);
 
   const wrap = document.getElementById('hk-task-table');
   if(!filtered.length){
@@ -1261,7 +1382,7 @@ function renderHKCharts(tasks) {
 // ======== HK WHATSAPP ========
 function openHKWhatsApp(){
   // Ensure charts are rendered
-  renderHKCharts(hkTasks);
+  renderHKCharts(window.hkTasks);
 
   const snap = document.getElementById('hk-wa-chart-snapshot');
   const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -1367,6 +1488,7 @@ function downloadHKWASnapshot(){
 document.getElementById('f-date').value = todayStr();
 document.getElementById('hk-date').value = todayStr();
 selectDept('RM');
+window._appReady = true;
 renderDashboard();
 </script>
 </body>
