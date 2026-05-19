@@ -468,10 +468,6 @@ tr:hover td{background:#fafbfc;}
         <div class="chart-wrap"><canvas id="hk-chart-building"></canvas></div>
       </div>
       <div class="chart-box">
-        <div class="chart-title">Tasks by Frequency</div>
-        <div class="chart-wrap"><canvas id="hk-chart-frequency"></canvas></div>
-      </div>
-      <div class="chart-box">
         <div class="chart-title">Completion Progress by Building</div>
         <div class="chart-wrap"><canvas id="hk-chart-progress"></canvas></div>
       </div>
@@ -1318,26 +1314,6 @@ function renderHKCharts(tasks) {
     }
   });
 
-  // 3. Frequency bar
-  const freqLabels = Object.keys(freqMap);
-  mkChart('hk-chart-frequency', {
-    type:'bar',
-    plugins: datalabelsPlugin ? [datalabelsPlugin] : [],
-    data:{
-      labels:freqLabels,
-      datasets:[{label:'Tasks',data:Object.values(freqMap),backgroundColor:'#C8922Acc',borderRadius:6,borderSkipped:false}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      layout:{padding:{top:24}},
-      plugins:{
-        legend:{display:false},
-        datalabels: datalabelsPlugin ? {anchor:'end',align:'top',clamp:true,clip:false,color:'#1a2332',font:{weight:'bold',size:11},formatter:v=>v>0?v:''} : false
-      },
-      scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{beginAtZero:true,ticks:{stepSize:1,font:{size:11}}}}
-    }
-  });
-
   // 4. Completion progress horizontal bar — dynamic height
   const progCount = Math.max(progBuildings.length, 1);
   const progWrap = document.getElementById('hk-chart-progress')?.parentElement;
@@ -1444,7 +1420,7 @@ function downloadHKWASnapshot(){
   clone.style.marginBottom = '0';
   wrapper.appendChild(clone);
 
-  ['hk-chart-status','hk-chart-building','hk-chart-frequency','hk-chart-progress'].forEach(id=>{
+  ['hk-chart-status','hk-chart-building','hk-chart-progress'].forEach(id=>{
     const origCanvas = document.getElementById(id);
     const cloneCanvas = clone.querySelector('#'+id);
     if(origCanvas && cloneCanvas){
