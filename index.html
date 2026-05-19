@@ -1117,7 +1117,7 @@ function deleteHKTaskFB(id){
 }
 
 function resetHKForm(){
-  ['hk-building','hk-assigned','hk-desc','hk-frequency','hk-targeted','hk-done'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['hk-building','hk-assigned','hk-desc','hk-targeted','hk-done'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('hk-status').value = 'Pending';
   document.getElementById('hk-date').value = todayStr();
   hkEditingId = null;
@@ -1134,7 +1134,6 @@ function submitHKTask(){
     description: desc,
     assigned: document.getElementById('hk-assigned').value.trim(),
     status: document.getElementById('hk-status').value,
-    frequency: document.getElementById('hk-frequency').value,
     targeted: parseInt(document.getElementById('hk-targeted').value)||0,
     doneSoFar: parseInt(document.getElementById('hk-done').value)||0,
     date: document.getElementById('hk-date').value || todayStr(),
@@ -1161,7 +1160,6 @@ function editHKTask(id){
   document.getElementById('hk-assigned').value = t.assigned||'';
   document.getElementById('hk-desc').value = t.description;
   document.getElementById('hk-status').value = t.status;
-  document.getElementById('hk-frequency').value = t.frequency||'';
   document.getElementById('hk-targeted').value = t.targeted||'';
   document.getElementById('hk-done').value = t.doneSoFar||'';
   document.getElementById('hk-date').value = t.date||todayStr();
